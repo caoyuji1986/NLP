@@ -20,7 +20,6 @@ class CNNNerConfig:
                embedding_keep_prob=0.5,
                idcnn_keep_prob=0.5,
                use_dilated=True,
-               use_directed=False,
                embedding_fine_tuning=True
                ):
     
@@ -33,7 +32,6 @@ class CNNNerConfig:
     self.embedding_keep_prob = embedding_keep_prob
     self.idcnn_keep_prob = idcnn_keep_prob
     self.use_dilated = use_dilated
-    self.use_directed = use_directed
     self.embedding_fine_tuning = embedding_fine_tuning
   
   @classmethod
@@ -73,7 +71,6 @@ class CNNNer(object):
                embedding_keep_prob,
                idcnn_keep_prob,
                use_dilated,
-               use_directed,
                embedding_fine_tuning,
                embedding_matrix,
                tag_num,
@@ -93,7 +90,6 @@ class CNNNer(object):
     self._embedding_keep_prob = embedding_keep_prob
     self._idcnn_keep_prob = idcnn_keep_prob
     self._use_dilated = use_dilated
-    self._use_directed = use_directed
     
     self._initializer = tf.truncated_normal_initializer(stddev=0.02)
     
@@ -138,16 +134,8 @@ class CNNNer(object):
     F_w -- filter_width
     T -- tag_num
     """
-    tf.logging.info("\n\n\n================================================")
-    if self._use_directed == False:
-      tf.logging.info("cnn type %s", 'dilated' if self._use_dilated else 'normal')
-    tf.logging.info("cnn type %s", 'directed' if self._use_directed else 'normal')
-    tf.logging.info("================================================\n\n\n")
     self._input_embedding = self.__embedding_layer(input_ids=self._input_ids)
-    if self._use_directed:
-      self._cnn_output = self.__bi_directed_cnn_layer(model_inputs=self._input_embedding)
-    else:
-      self._cnn_output = self.__cnn_layer(model_inputs=self._input_embedding)
+    self._cnn_output = self.__cnn_layer(model_inputs=self._input_embedding)
     self._logits = self.__cnn_project_layer(idcnn_output=self._cnn_output)
     return self.__loss(logits=self._logits, labels=self._labels)
     
@@ -164,101 +152,6 @@ class CNNNer(object):
     
     return embedding_input
   
-  def __directed_cnn_layer(self, model_inputs, reverse=False):
-    
-    if reverse:
-      model_inputs = tf.reverse(tensor=model_inputs, axis=[1])
-    
-    # B x S x E -> B x 1 x (Fn-1+S) x E
-    model_inputs = tf.expand_dims(input=model_inputs, axis=1)
-    model_inputs = tf.pad(tensor=model_inputs, paddings=[[0,0], [0,0], [self._filter_width - 1, 0], [0,0]])
-
-    
-    with tf.variable_scope("dcnn"):
-      final_output = list()
-      total_width = 0
-      shape = [1, self._filter_width, self._embedding_size, self._filter_num]
-      filter_weights = tf.get_variable(
-        "idcnn_filter",
-        shape=shape,
-        initializer=self._initializer)
-      # B x 1 x (Fn-1+S) x E -> B x 1 x S x F_n
-      layer_input = tf.nn.conv2d(input=model_inputs,
-                                 filter=filter_weights,
-                                 strides=[1, 1, 1, 1],
-                                 padding="VALID",
-                                 name="init_layer")
-
-      # 2. dilated cnn layers
-      final_output = list()
-      total_width = 0
-      for c_t in range(self._idcnn_macro_block_num):
-        for layer_index in range(len(self._layers)):
-          with tf.variable_scope("atrous_conv_l-%d" % layer_index, reuse=tf.AUTO_REUSE):
-            layer_input = tf.pad(tensor=layer_input, paddings=[[0, 0], [0, 0], [self._filter_width - 1, 0], [0, 0]])
-            w = tf.get_variable(name="w",
-                                shape=[1, self._filter_width, self._filter_num, self._filter_num],
-                                initializer=self._initializer)
-            b = tf.get_variable(name="b",
-                                shape=[self._filter_num])
-      
-            dilation = 1
-            layer_y = tf.nn.atrous_conv2d(value=layer_input,
-                                          filters=w,
-                                          rate=dilation,
-                                          padding="VALID")
-            layer_y = tf.nn.bias_add(value=layer_y, bias=b)
-            # tf.contrib.layer.layer_norm()
-            layer_y = tf.nn.relu(layer_y)
-            if layer_index == len(self._layers) - 1:
-              final_output.append(layer_y)
-              total_width += self._filter_num
-            layer_input = layer_y
-
-      y = tf.concat(values=final_output, axis=3)
-      
-      # B x 1 x S x F_n*N -> B x S x F_n*N
-      y = tf.squeeze(input=y, axis=[1])
-     
-      cell = tf.nn.rnn_cell.BasicLSTMCell(num_units=self._filter_num)
-      y, _ = tf.nn.dynamic_rnn(
-        cell,
-        y,
-        dtype=tf.float32
-      )
-      # B x S x F_n*N -> B*S x F_n*N
-      # y = tf.reshape(y, [-1, total_width])
-      # B x S x F_n-> B*S x F_n
-      if reverse:
-        y = tf.reverse(tensor=y, axis=[1])
-      y = tf.reshape(y, [-1, self._filter_num])
-      return y
-    
-  def __bi_directed_cnn_layer(self, model_inputs):
-    
-    #使用不同的参数
-    with tf.variable_scope('dcnn_l2r'):
-      y_forward = self.__directed_cnn_layer(model_inputs=model_inputs, reverse=False)
-      
-    with tf.variable_scope('dcnn_r2l'):
-      y_backward = self.__directed_cnn_layer(model_inputs=model_inputs, reverse=True)
-    
-    #B*S x Fn*2
-    y = tf.concat(values=[y_forward, y_backward], axis=-1)
-
-    W = tf.get_variable("W", shape=[self._filter_num * 2, self._filter_num],
-                        dtype=tf.float32, initializer=tf.truncated_normal_initializer(stddev=0.01))
-
-    b = tf.get_variable("b", shape=[self._filter_num], dtype=tf.float32,
-                        initializer=tf.zeros_initializer())
-    outputs__ = tf.tanh(tf.nn.xw_plus_b(y, W, b))
-
-
-    # B*S x 2*H -> B*S x H
-    hidden = tf.tanh(tf.nn.xw_plus_b(outputs__, W, b))
-    return hidden
-    
-
   def __cnn_layer(self, model_inputs):
     '''
     idcnn/cnn layer

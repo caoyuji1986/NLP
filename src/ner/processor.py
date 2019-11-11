@@ -65,7 +65,6 @@ class NerDataProcessor(DataProcessor):
     )
   
   def get_labels(self):
-    # return ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "[CLS]","[SEP]"]
     return ["O", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "X", "[CLS]", "[SEP]"]
     
   def _create_example(self, lines, set_type):

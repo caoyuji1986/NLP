@@ -58,7 +58,7 @@ class Evaluation:
     num_tag_all = 0
     for name in names:
       num_truth, num_fault, num_tag = self.eval(name)
-      prec, recall, f1 = self.metrice(num_truth, num_fault, num_tag)
+      prec, recall, f1 = self.metrice_def(num_truth, num_fault, num_tag)
       tf.logging.info('--------------------------[ %s ]------------------------', name)
       tf.logging.info("prec: %f", prec)
       tf.logging.info("recall: %f", recall)
@@ -68,7 +68,7 @@ class Evaluation:
       num_fault_all += num_fault
       num_tag_all += num_tag
    
-    return self.metrice(num_truth_all, num_fault_all, num_tag_all)
+    return self.metrice_def(num_truth_all, num_fault_all, num_tag_all)
  
   def __is_entity_changed(self, tag):
    
@@ -146,7 +146,7 @@ class Evaluation:
    
     return num_truth, num_fault, num_tag
  
-  def metrice(self, num_truth, num_fault, num_tag):
+  def metrice_def(self, num_truth, num_fault, num_tag):
    
     precision = float(num_truth) / (float(num_fault + num_truth) + 0.01) + 0.000001
     recall = float(num_truth) / (float(num_tag) + 0.01) + 0.000001

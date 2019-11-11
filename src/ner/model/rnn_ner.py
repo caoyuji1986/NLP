@@ -176,13 +176,7 @@ class BiRNNNer(RNNNer):
 	
 	def __build_component(self):
 		with tf.name_scope('build'):
-			self._W = tf.get_variable(
-				shape=[self._hidden_size, self._tags_num],
-				initializer=tf.truncated_normal_initializer(stddev=0.01),
-				name='weights'
-			)
-			self._b = tf.Variable(tf.zeros([self._tags_num], name="bias"))
-			
+
 			keep_prob = self._rnn_keep_prob if self._mode == tf.estimator.ModeKeys.TRAIN else 1.0
 			cell = tf.contrib.rnn.BasicLSTMCell(self._hidden_size)
 			self._lstm_fw = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=keep_prob)
@@ -210,20 +204,18 @@ class BiRNNNer(RNNNer):
 			)
 			# [[B x S x H]_1,[B x S x H]_2] - > B x S x 2*H
 			outputs__ = tf.concat(axis=-1, values=[outputs_[0], outputs_[1]])
-			W = tf.get_variable("W", shape=[self._hidden_size * 2, self._hidden_size],
-			                    dtype=tf.float32, initializer=tf.truncated_normal_initializer(stddev=0.01))
-			
-			b = tf.get_variable("b", shape=[self._hidden_size], dtype=tf.float32,
-			                    initializer=tf.zeros_initializer())
 			output = tf.reshape(outputs__, shape=[-1, self._hidden_size * 2])
 			
 			# B*S x 2*H -> B*S x H
-			hidden = tf.tanh(tf.nn.xw_plus_b(output, W, b))
-		
+			hidden = tf.layers.dense(inputs=output, units=self._hidden_size, activation=tf.tanh,
+			                         kernel_initializer=tf.truncated_normal_initializer(stddev=0.01),
+			                         bias_initializer=tf.zeros_initializer())
 		with tf.name_scope('project'):
 			sequence_length_ = self._input_ids.get_shape().as_list()[1]
 			# B*S x 2 -> B*S x T
-			logits = tf.matmul(a=hidden, b=self._W) + self._b
+			logits = tf.layers.dense(inputs=hidden, units=self._tags_num,
+			                         kernel_initializer=tf.truncated_normal_initializer(stddev=0.01),
+			                         bias_initializer=tf.zeros_initializer())
 			# B*S x T -> B x S x T
 			logits_ = tf.reshape(tensor=logits, shape=[-1, sequence_length_, self._tags_num])
 		
@@ -284,12 +276,6 @@ class UniRNNNer(RNNNer):
 	def __build_base_component(self):
 		
 		with tf.name_scope("build_component"):
-			self._W = tf.get_variable(
-				shape=[self._hidden_size, self._tags_num],
-				initializer=tf.truncated_normal_initializer(stddev=0.01),
-				name='weights'
-			)
-			self._b = tf.Variable(tf.zeros([self._tags_num], name="bias"))
 			
 			if self._rnn_cell_type == 'lstm':
 				self._rnn_fw = tf.nn.rnn_cell.BasicLSTMCell(num_units=self._hidden_size)
@@ -315,7 +301,7 @@ class UniRNNNer(RNNNer):
 				self._rnn_fw,
 				embedding_input_ids,
 				dtype=tf.float32,
-				sequence_length=sequence_length  # !!!!可以优化
+				sequence_length=sequence_length
 			)
 			outputs = tf.reshape(outputs, [-1, self._hidden_size])
 			keep_prob = self._rnn_keep_prob if self._mode == tf.estimator.ModeKeys.TRAIN else 1.0
