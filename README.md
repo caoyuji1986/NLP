@@ -43,7 +43,8 @@ nohup python3.6 src/nmt/transformer/train.py \
     # 计算blue 值
     perl ./src/nmt/multi-blue.perl \
         ./out/nmt/transformer/y_label.txt < ./out/nmt/transformer/y_predict.txt
-### 6.下一个版本即将引入的新功能
+### 6. 当前训练参数不适合大型训练集：训练参数参考https://arxiv.org/pdf/1804.00247.pdf
+### 7.下一个版本即将引入的新功能
 - 基于tensorflow 运算实现greedy search
 - 基于tensorflow 运算实现beam search
 
