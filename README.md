@@ -4,6 +4,7 @@ NLP 最新进展的论文实现
 本人提供技术支持：1007171627@qq.com
 
 ## 一、Transformer 
+数据集参考http://data.statmt.org/wmt18/translation-task/preprocessed/zh-en/
 实现了《Attention is all your need》 中提到的算法。目前的进度，完成训练代码，测试代码但是并没有进行测试。
 论文网址：https://arxiv.org/pdf/1706.03762.pdf
 ### 1.效果
